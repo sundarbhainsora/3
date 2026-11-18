@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voice Message</title>
+<style>
+:root{--card:rgba(255,255,255,.88);--ink:#1f1f23;--soft:#5d5d66;--acc:#2f6fed;--line:rgba(0,0,0,.12);--bg:#e9ecf2}
+@media (prefers-color-scheme:dark){:root{--card:rgba(28,28,32,.88);--ink:#f2f2f5;--soft:#b4b4be;--line:rgba(255,255,255,.18);--bg:#141418}}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--bg) center/cover fixed no-repeat;color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow-x:hidden}
+main {
+    max-width: 422px;
+    margin: 566px 40px 24px auto;
+    padding: 8px 16px 48px;
+}.card{background:var(--card);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:18px;padding:20px;margin-bottom:16px}
+h2{margin:0 0 4px;font-size:1.1rem}
+p{margin:0 0 14px;color:var(--soft);font-size:.9rem}
+.big{width:72px;height:72px;border-radius:50%;border:0;background:var(--acc);color:#fff;font-size:1.6rem;cursor:pointer;display:block;margin:6px auto}
+.big.rec{background:#d63031;animation:pulse 1s ease-in-out infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 12px rgba(214,48,49,.2)}}
+.bar{height:5px;border-radius:5px;background:var(--line);margin:14px 0 6px;overflow:hidden}
+.bar b{display:block;height:100%;width:0;background:var(--acc)}
+.time{font-size:.85rem;color:var(--soft);text-align:center}
+.btn{font:inherit;border:0;border-radius:10px;padding:12px 18px;margin:6px 4px 0 0;cursor:pointer;color:#fff;background:var(--acc)}
+.btn.ghost{background:transparent;color:var(--acc);border:1px solid var(--acc)}
+audio{width:100%;margin:12px 0 4px}
+.note{font-size:.85rem;color:var(--soft);margin-top:8px}
+.hide{display:none!important}
+.side-image {
+    position: fixed;
+    left: 6%;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 38%;
+    max-height: 80vh;
+    object-fit: contain;
+    border-radius: 20px;
+}
+</style>
+</head>
+<body>
+  <img src="./photo.jpeg" class="side-image" alt="Our photo">
+<main>
+  <section class="card">
+    <h2>Voice message</h2>
+    <button class="big" id="pb" aria-label="Play">▶</button>
+    <div class="bar"><b id="pf"></b></div>
+    <div class="time" id="pt">0:00</div>
+    <audio id="pa" class="hide" preload="auto" playsinline></audio>
+  </section>
+
+  <section class="card">
+    <h2>Send a voice reply</h2>
+    <p> Record, listen, then send.</p>
+    <button class="big" id="rb" aria-label="Record">🎙️</button>
+    <div class="time" id="st">Tap the mic to record</div>
+    <div id="take" class="hide">
+      <audio id="ra" controls playsinline></audio>
+      <button class="btn" id="send">Send</button>
+      <button class="btn ghost" id="redo">Record again</button>
+      <div class="note" id="msg"></div>
+    </div>
+  </section>
+</main>
+<script>
+/* ===== SETTINGS:  ===== */
+const AUDIO_FILE = '/voice.ogg';
+const BG_FILE    = 'bg.jpeg';
+
+const $ = id => document.getElementById(id);
+const fmt = s => { s = Math.floor(s||0); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); };
+if (BG_FILE) document.body.style.backgroundImage = 'url("'+BG_FILE+'")';
+
+/* ---- Voice message player ---- */
+const a=$('pa'), pb=$('pb'), pf=$('pf'), pt=$('pt');
+a.src = AUDIO_FILE;
+pb.onclick = () => a.paused ? a.play() : a.pause();
+a.onplay  = () => pb.textContent='❚❚';
+a.onpause = () => pb.textContent='▶';
+a.onended = () => { pb.textContent='↻'; pf.style.width='100%'; };
+a.ontimeupdate = () => { pf.style.width=(a.currentTime/(a.duration||1)*100)+'%'; pt.textContent=fmt(a.currentTime)+' / '+fmt(a.duration); };
+a.onerror = () => { pt.textContent='Voice file not found'; };
+
+/* ---- Voice reply recorder ---- */
+const MIME = (window.MediaRecorder && ['audio/webm;codecs=opus','audio/webm','audio/mp4'].find(t=>MediaRecorder.isTypeSupported(t))) || '';
+const EXT = MIME.includes('mp4') ? 'm4a' : 'webm';
+const rb=$('rb'), st=$('st'), take=$('take'), ra=$('ra'), msg=$('msg');
+let mr, chunks=[], stream, tick, t0, reply;
+
+async function start(){
+  if(!MIME){ st.textContent='Recording is not supported in this browser.'; return; }
+  try{ stream = await navigator.mediaDevices.getUserMedia({audio:true}); }
+  catch(e){ st.textContent='Please allow microphone access.'; return; }
+  chunks=[]; mr=new MediaRecorder(stream,{mimeType:MIME});
+  mr.ondataavailable = e => e.data.size && chunks.push(e.data);
+  mr.onstop = () => {
+    stream.getTracks().forEach(t=>t.stop()); clearInterval(tick);
+    reply = new Blob(chunks,{type:MIME.split(';')[0]});
+    ra.src = URL.createObjectURL(reply);
+    take.classList.remove('hide'); rb.className='big'; rb.textContent='🎙️';
+    st.textContent='Recorded'; msg.textContent='';
+  };
+  mr.start(250); t0=Date.now(); rb.className='big rec'; rb.textContent='⏹';
+  tick=setInterval(()=>st.textContent='Recording… '+fmt((Date.now()-t0)/1000),250);
+}
+rb.onclick = () => { if(mr && mr.state==='recording') mr.stop(); else { take.classList.add('hide'); start(); } };
+$('redo').onclick = () => { take.classList.add('hide'); start(); };
+
+$('send').onclick = async () => {
+  if(!reply) return;
+  const file = new File([reply],'voice-reply.'+EXT,{type:reply.type});
+  try{
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file],title:'Voice reply'});
+      msg.textContent='Sent.'; return;
+    }
+  }catch(e){ if(e && e.name==='AbortError'){ msg.textContent='Not sent.'; return; } }
+  // fallback: file download
+  const l=document.createElement('a'); l.href=URL.createObjectURL(reply); l.download=file.name;
+  document.body.appendChild(l); l.click(); l.remove();
+  msg.textContent='File saved. Please send it in chat.';
+};
+</script>
+</body>
+</html>
